@@ -59,10 +59,18 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define SERVO_CONT_Pin GPIO_PIN_0
+#define SERVO_CONT_GPIO_Port GPIOA
 #define SERVO_EN_Pin GPIO_PIN_1
 #define SERVO_EN_GPIO_Port GPIOA
 #define SERVO_PWM_Pin GPIO_PIN_2
 #define SERVO_PWM_GPIO_Port GPIOA
+#define HEATER_CONT_Pin GPIO_PIN_3
+#define HEATER_CONT_GPIO_Port GPIOA
+#define STATUS_IND_Pin GPIO_PIN_3
+#define STATUS_IND_GPIO_Port GPIOB
+#define WARN_IND_Pin GPIO_PIN_4
+#define WARN_IND_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

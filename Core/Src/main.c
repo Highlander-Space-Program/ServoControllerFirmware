@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "stdbool.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -32,6 +32,10 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define TX_ID 0x440
+#define HSP_SERVO_MIN_PULSE_WIDTH 500
+#define HSP_SERVO_MAX_PULSE_WIDTH 2500
+#define HSP_SERVO_PWM_PERIOD 20000
+#define HSP_SERVO_MAX_DEG 270
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -59,6 +63,10 @@ static void MX_TIM16_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 HAL_StatusTypeDef send_can_msg(const uint8_t *data, size_t len);
+uint32_t Deg_To_CCR(uint8_t deg, TIM_HandleTypeDef *timer);
+void Actuate_Servo(uint8_t deg);
+void Test_Actuate_Servo();
+bool Check_Servo_Cont();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -123,21 +131,21 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
   HAL_GPIO_WritePin(SERVO_EN_GPIO_Port, SERVO_EN_Pin, GPIO_PIN_SET);
   float n = 1.234f;
   while (1)
   {
-	  // HAL_GPIO_TogglePin(STATUS_IND_GPIO_Port, STATUS_IND_Pin);
-	  // HAL_GPIO_TogglePin(WARN_IND_GPIO_Port, WARN_IND_Pin);
-	  // send_can_msg(&n, sizeof(n));
-	  TIM2->CCR2 = 50;
-	  TIM2->CCR3 = 50;
-	  HAL_Delay(1000);
-	  TIM2->CCR2 = 250;
-	  TIM2->CCR3 = 250;
-	  HAL_Delay(1000);
+	  // Checks servo continuity then performs test actuation
+	  send_can_msg(&n, sizeof(n));
+	  if (Check_Servo_Cont()) {
+		  HAL_GPIO_WritePin(STATUS_IND_GPIO_Port, STATUS_IND_Pin, GPIO_PIN_SET);
+	  }
+	  else {
+		  HAL_GPIO_WritePin(STATUS_IND_GPIO_Port, STATUS_IND_Pin, GPIO_PIN_RESET);
+		  HAL_GPIO_WritePin(WARN_IND_GPIO_Port, WARN_IND_Pin, GPIO_PIN_SET);
+	  }
+	  Test_Actuate_Servo();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -239,9 +247,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 47;
+  htim2.Init.Prescaler = 5;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 399;
+  htim2.Init.Period = 159999;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -267,10 +275,6 @@ static void MX_TIM2_Init(void)
   sConfigOC.Pulse = 0;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
   if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
@@ -364,12 +368,28 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(SERVO_EN_GPIO_Port, SERVO_EN_Pin, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, STATUS_IND_Pin|WARN_IND_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pins : SERVO_CONT_Pin HEATER_CONT_Pin */
+  GPIO_InitStruct.Pin = SERVO_CONT_Pin|HEATER_CONT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
   /*Configure GPIO pin : SERVO_EN_Pin */
   GPIO_InitStruct.Pin = SERVO_EN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(SERVO_EN_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : STATUS_IND_Pin WARN_IND_Pin */
+  GPIO_InitStruct.Pin = STATUS_IND_Pin|WARN_IND_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
@@ -393,6 +413,38 @@ HAL_StatusTypeDef send_can_msg(const uint8_t *data, size_t len) {
 
     return status;
 }
+
+uint32_t Deg_To_CCR(uint8_t deg, TIM_HandleTypeDef *timer) {
+	// Converts deg to the required CCR for timer to achieve that degree
+    uint32_t arr = timer->Init.Period;
+    double pulse_width = ((double)HSP_SERVO_MAX_PULSE_WIDTH-HSP_SERVO_MIN_PULSE_WIDTH)/HSP_SERVO_MAX_DEG * deg + HSP_SERVO_MIN_PULSE_WIDTH;
+    return pulse_width*arr/HSP_SERVO_PWM_PERIOD;
+}
+
+void Actuate_Servo(uint8_t deg) {
+	// Sets servo position to deg
+	TIM2->CCR3 = Deg_To_CCR(deg, &htim2);
+}
+
+void Test_Actuate_Servo() {
+	// Moves servo 90 degrees then back
+	Actuate_Servo(90);
+	HAL_Delay(2000);
+	Actuate_Servo(175);
+	HAL_Delay(2000);
+	Actuate_Servo(90);
+}
+
+bool Check_Servo_Cont() {
+	// Checks continuity of servo pin
+	// Delay needed bc electrical engineering is hard
+	HAL_GPIO_WritePin(SERVO_EN_GPIO_Port, SERVO_EN_Pin, GPIO_PIN_RESET);
+	HAL_Delay(50);
+	GPIO_PinState continuity = HAL_GPIO_ReadPin(SERVO_CONT_GPIO_Port, SERVO_CONT_Pin);
+	HAL_GPIO_WritePin(SERVO_EN_GPIO_Port, SERVO_EN_Pin, GPIO_PIN_SET);
+	return continuity;
+}
+
 /* USER CODE END 4 */
 
 /**
