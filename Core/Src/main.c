@@ -22,6 +22,10 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "stdbool.h"
+#include "can_utils.h"
+#include "servo_utils.h"
+#include "board_utils.h"
+#include "heater_utils.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,11 +35,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define TX_ID 0x440
-#define HSP_SERVO_MIN_PULSE_WIDTH 500
-#define HSP_SERVO_MAX_PULSE_WIDTH 2500
-#define HSP_SERVO_PWM_PERIOD 20000
-#define HSP_SERVO_MAX_DEG 270
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -44,6 +44,9 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc;
+DMA_HandleTypeDef hdma_adc;
+
 CAN_HandleTypeDef hcan;
 
 TIM_HandleTypeDef htim2;
@@ -51,22 +54,20 @@ TIM_HandleTypeDef htim14;
 TIM_HandleTypeDef htim16;
 
 /* USER CODE BEGIN PV */
-
+uint32_t adc_val = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_CAN_Init(void);
 static void MX_TIM14_Init(void);
 static void MX_TIM16_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_ADC_Init(void);
 /* USER CODE BEGIN PFP */
-HAL_StatusTypeDef send_can_msg(const uint8_t *data, size_t len);
-uint32_t Deg_To_CCR(uint8_t deg, TIM_HandleTypeDef *timer);
-void Actuate_Servo(uint8_t deg);
-void Test_Actuate_Servo();
-bool Check_Servo_Cont();
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -103,10 +104,12 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_CAN_Init();
   MX_TIM14_Init();
   MX_TIM16_Init();
   MX_TIM2_Init();
+  MX_ADC_Init();
   /* USER CODE BEGIN 2 */
   CAN_FilterTypeDef filter;
   filter.FilterMaskIdHigh = 0x0;
@@ -119,7 +122,8 @@ int main(void)
   if (HAL_CAN_ConfigFilter(&hcan, &filter) != HAL_OK) {
       Error_Handler();
   }
-
+  HAL_ADCEx_Calibration_Start(&hadc);
+  HAL_ADC_Start_DMA(&hadc,(uint32_t*)&adc_val,1);
 //  if (HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING)) {
 //    Error_Handler();
 //  };
@@ -132,20 +136,21 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
-  HAL_GPIO_WritePin(SERVO_EN_GPIO_Port, SERVO_EN_Pin, GPIO_PIN_SET);
+  Turn_On_Servo();
   float n = 1.234f;
   while (1)
   {
 	  // Checks servo continuity then performs test actuation
-	  send_can_msg(&n, sizeof(n));
+	  send_can_msg(&n, sizeof(n), hcan);
 	  if (Check_Servo_Cont()) {
-		  HAL_GPIO_WritePin(STATUS_IND_GPIO_Port, STATUS_IND_Pin, GPIO_PIN_SET);
+		  STATUS_IND_On();
 	  }
 	  else {
-		  HAL_GPIO_WritePin(STATUS_IND_GPIO_Port, STATUS_IND_Pin, GPIO_PIN_RESET);
-		  HAL_GPIO_WritePin(WARN_IND_GPIO_Port, WARN_IND_Pin, GPIO_PIN_SET);
+		  STATUS_IND_Off();
+		  WARN_IND_On();
 	  }
-	  Test_Actuate_Servo();
+	  Turn_On_Servo();
+	  Test_Actuate_Servo(htim2);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -165,8 +170,10 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI14|RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.HSI14State = RCC_HSI14_ON;
+  RCC_OscInitStruct.HSI14CalibrationValue = 16;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL6;
@@ -188,6 +195,60 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief ADC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC_Init(void)
+{
+
+  /* USER CODE BEGIN ADC_Init 0 */
+
+  /* USER CODE END ADC_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC_Init 1 */
+
+  /* USER CODE END ADC_Init 1 */
+
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+  */
+  hadc.Instance = ADC1;
+  hadc.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
+  hadc.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc.Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
+  hadc.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  hadc.Init.LowPowerAutoWait = DISABLE;
+  hadc.Init.LowPowerAutoPowerOff = DISABLE;
+  hadc.Init.ContinuousConvMode = DISABLE;
+  hadc.Init.DiscontinuousConvMode = DISABLE;
+  hadc.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc.Init.DMAContinuousRequests = ENABLE;
+  hadc.Init.Overrun = ADC_OVR_DATA_PRESERVED;
+  if (HAL_ADC_Init(&hadc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure for the selected ADC regular channel to be converted.
+  */
+  sConfig.Channel = ADC_CHANNEL_5;
+  sConfig.Rank = ADC_RANK_CHANNEL_NUMBER;
+  sConfig.SamplingTime = ADC_SAMPLETIME_71CYCLES_5;
+  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC_Init 2 */
+
+  /* USER CODE END ADC_Init 2 */
+
 }
 
 /**
@@ -350,6 +411,22 @@ static void MX_TIM16_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -366,7 +443,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(SERVO_EN_GPIO_Port, SERVO_EN_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, SERVO_EN_Pin|HEATER_EN_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, STATUS_IND_Pin|WARN_IND_Pin, GPIO_PIN_RESET);
@@ -377,12 +454,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : SERVO_EN_Pin */
-  GPIO_InitStruct.Pin = SERVO_EN_Pin;
+  /*Configure GPIO pins : SERVO_EN_Pin HEATER_EN_Pin */
+  GPIO_InitStruct.Pin = SERVO_EN_Pin|HEATER_EN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(SERVO_EN_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : STATUS_IND_Pin WARN_IND_Pin */
   GPIO_InitStruct.Pin = STATUS_IND_Pin|WARN_IND_Pin;
@@ -396,54 +473,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-HAL_StatusTypeDef send_can_msg(const uint8_t *data, size_t len) {
-    CAN_TxHeaderTypeDef header;
-    header.IDE = CAN_ID_STD;
-    header.StdId = TX_ID;
-    header.RTR = CAN_RTR_DATA;
-    header.TransmitGlobalTime = DISABLE;
-    header.DLC = len;
 
-    uint32_t mailbox;
-
-    HAL_StatusTypeDef status = HAL_CAN_AddTxMessage(&hcan, &header, data, &mailbox);
-    if (status != HAL_OK) {
-
-    }
-
-    return status;
-}
-
-uint32_t Deg_To_CCR(uint8_t deg, TIM_HandleTypeDef *timer) {
-	// Converts deg to the required CCR for timer to achieve that degree
-    uint32_t arr = timer->Init.Period;
-    double pulse_width = ((double)HSP_SERVO_MAX_PULSE_WIDTH-HSP_SERVO_MIN_PULSE_WIDTH)/HSP_SERVO_MAX_DEG * deg + HSP_SERVO_MIN_PULSE_WIDTH;
-    return pulse_width*arr/HSP_SERVO_PWM_PERIOD;
-}
-
-void Actuate_Servo(uint8_t deg) {
-	// Sets servo position to deg
-	TIM2->CCR3 = Deg_To_CCR(deg, &htim2);
-}
-
-void Test_Actuate_Servo() {
-	// Moves servo 90 degrees then back
-	Actuate_Servo(90);
-	HAL_Delay(2000);
-	Actuate_Servo(175);
-	HAL_Delay(2000);
-	Actuate_Servo(90);
-}
-
-bool Check_Servo_Cont() {
-	// Checks continuity of servo pin
-	// Delay needed bc electrical engineering is hard
-	HAL_GPIO_WritePin(SERVO_EN_GPIO_Port, SERVO_EN_Pin, GPIO_PIN_RESET);
-	HAL_Delay(50);
-	GPIO_PinState continuity = HAL_GPIO_ReadPin(SERVO_CONT_GPIO_Port, SERVO_CONT_Pin);
-	HAL_GPIO_WritePin(SERVO_EN_GPIO_Port, SERVO_EN_Pin, GPIO_PIN_SET);
-	return continuity;
-}
 
 /* USER CODE END 4 */
 

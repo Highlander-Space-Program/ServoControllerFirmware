@@ -31,7 +31,7 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "stdbool.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -46,7 +46,6 @@ extern "C" {
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
-
 /* USER CODE END EM */
 
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
@@ -67,6 +66,10 @@ void Error_Handler(void);
 #define SERVO_PWM_GPIO_Port GPIOA
 #define HEATER_CONT_Pin GPIO_PIN_3
 #define HEATER_CONT_GPIO_Port GPIOA
+#define HEATER_EN_Pin GPIO_PIN_4
+#define HEATER_EN_GPIO_Port GPIOA
+#define HEATER_TEMP_Pin GPIO_PIN_5
+#define HEATER_TEMP_GPIO_Port GPIOA
 #define STATUS_IND_Pin GPIO_PIN_3
 #define STATUS_IND_GPIO_Port GPIOB
 #define WARN_IND_Pin GPIO_PIN_4
