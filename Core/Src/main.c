@@ -17,6 +17,7 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
+
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -26,6 +27,8 @@
 #include "servo_utils.h"
 #include "board_utils.h"
 #include "heater_utils.h"
+#include "heater_stateMachine.h"
+#include "heater_enum.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -72,6 +75,8 @@ static void MX_ADC_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+uint8_t CMD;
 
 /* USER CODE END 0 */
 
@@ -124,9 +129,9 @@ int main(void)
   }
   HAL_ADCEx_Calibration_Start(&hadc);
   HAL_ADC_Start_DMA(&hadc,(uint32_t*)&adc_val,1);
-//  if (HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING)) {
-//    Error_Handler();
-//  };
+  if (HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING)) {
+    Error_Handler();
+  };
 
   if (HAL_CAN_Start(&hcan) != HAL_OK) {
       Error_Handler();
@@ -136,10 +141,26 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
-  Turn_On_Servo();
-  float n = 1.234f;
+  //Turn_On_Servo();
+  //float n = 1.234f;
+
+  enum HEATER_STATE{
+	  OFF = 0,
+	  ON = 1,
+	  AUTO = 2
+
+  } heaterState = OFF;
+
+  enum COMMANDS {
+	  H_ON = 0,
+	  H_OFF = 1,
+	  H_AUTO = 2
+
+  };
+
   while (1)
   {
+	  /* STUFF ALEX WROTE START
 	  // Checks servo continuity then performs test actuation
 	  send_can_msg(&n, sizeof(n), hcan);
 	  if (Check_Servo_Cont()) {
@@ -151,6 +172,31 @@ int main(void)
 	  }
 	  Turn_On_Servo();
 	  Test_Actuate_Servo(htim2);
+
+	  STUFF ALEX WROTE END*/
+
+
+	  /* STUFF FOR FIRST TESTING THE HEATER THINGS I WROTE START
+	  Heater_On();
+	  HAL_GPIO_WritePin(STATUS_IND_GPIO_Port, STATUS_IND_Pin, GPIO_PIN_SET);
+
+	  HAL_Delay(500);
+
+	  Heater_Off();
+	  HAL_GPIO_WritePin(STATUS_IND_GPIO_Port, STATUS_IND_Pin, GPIO_PIN_RESET);
+
+	  HAL_Delay(500);
+	   END*/
+
+	  //State machine stuff start
+
+	  Tick_Heater(CMD);
+
+	  if (CMD != 0xff) {
+		  CMD = 0xFF;
+	  }
+
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -473,6 +519,19 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan){
+	CAN_RxHeaderTypeDef RxHeader;
+	uint8_t RxData[8];
+
+	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
+		Error_Handler();
+	}
+
+	HAL_GPIO_TogglePin(STATUS_IND_GPIO_Port, STATUS_IND_Pin);
+
+	CMD = RxData[0];
+
+}
 
 
 /* USER CODE END 4 */

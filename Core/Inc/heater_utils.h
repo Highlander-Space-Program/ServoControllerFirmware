@@ -11,12 +11,17 @@
 #include "stm32f0xx_hal.h"
 #include "main.h"
 
+
 void Heater_On() {
 	HAL_GPIO_WritePin(HEATER_EN_GPIO_Port, HEATER_EN_Pin, GPIO_PIN_SET);
 }
 
 void Heater_Off() {
 	HAL_GPIO_WritePin(HEATER_EN_GPIO_Port, HEATER_EN_Pin, GPIO_PIN_RESET);
+}
+
+void Heater_Auto() {
+	//TODO build this function
 }
 
 double Get_Temperature(uint32_t adc_val) {
