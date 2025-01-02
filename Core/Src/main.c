@@ -26,6 +26,7 @@
 #include "servo_utils.h"
 #include "board_utils.h"
 #include "heater_utils.h"
+#include "servo_state_machine.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -72,6 +73,62 @@ static void MX_ADC_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+enum COMMANDS {
+	SERVO_OPEN = 0,
+	SERVO_CLOSE = 1,
+	HEATER_ON = 2,
+	HEATER_OFF = 3
+};
+
+void TestServo (struct Servo* servo) {
+  while (1) {
+	// LED TURNS ON, SERVO OPENS
+	Tick_SERVO(OPEN_SERVO, servo);
+	HAL_Delay(1000); // wait 15 seconds
+
+	// LED STAYS ON, SERVO CLOSES
+	Tick_SERVO(CLOSE_SERVO, servo);
+	HAL_Delay(1000);
+
+	// LED STAYS ON, SERVO STAYS CLOSED
+	Tick_SERVO(CHECK_SERVO, servo);
+    HAL_Delay(10000); // wait 15 seconds
+
+    // LED TURNS OFF, SERVO STAYS CLOSED
+	Tick_SERVO(CHECK_SERVO, servo);
+	HAL_Delay(1000);
+
+	// LED TURNS ON, SERVO GOES TO OPEN ANGLE
+	Tick_SERVO(OPEN_SERVO, servo);
+	HAL_Delay(1000); // wait 15 seconds
+
+	// LED STAYS ON, SERVO CLOSES
+	Tick_SERVO(CLOSE_SERVO, servo);
+	HAL_Delay(1000);
+  }
+}
+
+// tbd
+//void TestHeater() {
+//
+//	// TURNS HEATER ON
+//	Tick_Heater (H_ON);
+//	HAL_Delay(1000);
+//
+//	// TURNS HEATER OFF
+//	Tick_Heater (H_ON);
+//	HAL_Delay(1000);
+//
+//	while (1) {
+//		// AUTO HEATER
+//		Tick_Heater (H_AUTO);
+//	}
+//}
+
+// tbd
+void TestServoAndHeater() {
+
+}
 
 /* USER CODE END 0 */
 
@@ -79,6 +136,7 @@ static void MX_ADC_Init(void);
   * @brief  The application entry point.
   * @retval int
   */
+
 int main(void)
 {
 
@@ -131,28 +189,40 @@ int main(void)
   if (HAL_CAN_Start(&hcan) != HAL_OK) {
       Error_Handler();
   }
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
-  Turn_On_Servo();
-  float n = 1.234f;
+
+  /* configure board */
+  uint32_t uid[3];
+  uid[0] = HAL_GetUIDw0();
+  uid[1] = HAL_GetUIDw1();
+  uid[2] = HAL_GetUIDw2();
+
+  /* initialize servos */
+  struct Servo* servo = construct_servo (uid, &htim2);
+
+
+
+  // ** COMMENT OUT IF NOT TESTING COMPONENTS ** //
+
+  // ** TESTING SERVO ** //
+  TestServo (servo);
+  // ** TESTING SERVO ** //
+
+  // ** TESTING HEATER ** //
+  //  TestHeater ();
+  // ** TESTING
+
+
+  // will run through a set of test commands to see if everything works then repeat
   while (1)
   {
-	  // Checks servo continuity then performs test actuation
-	  send_can_msg(&n, sizeof(n), hcan);
-	  if (Check_Servo_Cont()) {
-		  STATUS_IND_On();
-	  }
-	  else {
-		  STATUS_IND_Off();
-		  WARN_IND_On();
-	  }
-	  Turn_On_Servo();
-	  Test_Actuate_Servo(htim2);
     /* USER CODE END WHILE */
-
+	Tick_SERVO(CHECK_SERVO, servo);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
