@@ -20,9 +20,8 @@ void Heater_Off() {
 }
 
 double Get_Temperature(uint32_t adc_val) {
-	// TODO: Test this
 	double voltage = adc_val * (3.3 / 4096);
-	return (voltage - 3.3) / 0.005;
+	return (voltage - 1.24) / 0.005;
 }
 
 #endif /* INC_HEATER_UTILS_H_ */

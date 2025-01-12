@@ -55,6 +55,7 @@ TIM_HandleTypeDef htim16;
 
 /* USER CODE BEGIN PV */
 uint32_t adc_val = 0;
+double heater_temp = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -127,6 +128,8 @@ int main(void)
 //  if (HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING)) {
 //    Error_Handler();
 //  };
+
+  heater_temp = Get_Temperature(adc_val);
 
   if (HAL_CAN_Start(&hcan) != HAL_OK) {
       Error_Handler();
