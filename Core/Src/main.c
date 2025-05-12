@@ -55,7 +55,7 @@ TIM_HandleTypeDef htim16;
 
 /* USER CODE BEGIN PV */
 uint32_t adc_val = 0;
-double heater_temp = 0;
+float heater_temp = 0.0f;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -123,37 +123,24 @@ int main(void)
   if (HAL_CAN_ConfigFilter(&hcan, &filter) != HAL_OK) {
       Error_Handler();
   }
-  HAL_ADCEx_Calibration_Start(&hadc);
-  HAL_ADC_Start_DMA(&hadc,(uint32_t*)&adc_val,1);
 //  if (HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING)) {
 //    Error_Handler();
 //  };
 
-  heater_temp = Get_Temperature(adc_val);
-
   if (HAL_CAN_Start(&hcan) != HAL_OK) {
       Error_Handler();
   }
+
+  HAL_ADCEx_Calibration_Start(&hadc);
+  HAL_ADC_Start_DMA(&hadc,(uint32_t*)&adc_val,1);
+
+  HAL_TIM_Base_Start_IT(&htim14);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
-  Turn_On_Servo();
-  float n = 1.234f;
   while (1)
   {
-	  // Checks servo continuity then performs test actuation
-	  send_can_msg(&n, sizeof(n), hcan);
-	  if (Check_Servo_Cont()) {
-		  STATUS_IND_On();
-	  }
-	  else {
-		  STATUS_IND_Off();
-		  WARN_IND_On();
-	  }
-	  Turn_On_Servo();
-	  Test_Actuate_Servo(htim2);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -476,7 +463,11 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+  if (htim == &htim14) {
+    STATUS_IND_Toggle();
+  }
+}
 
 /* USER CODE END 4 */
 
