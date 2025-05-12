@@ -465,8 +465,14 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   if (htim == &htim14) {
+    volatile float temp = heater_temp;
     STATUS_IND_Toggle();
   }
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
+  heater_temp = Get_Temperature(adc_val);
+  HAL_ADC_Start_DMA(hadc,(uint32_t*)&adc_val,1);
 }
 
 /* USER CODE END 4 */
