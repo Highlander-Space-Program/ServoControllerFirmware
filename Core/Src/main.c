@@ -35,7 +35,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+// Min and max setpoints for active heater control loop
+#define HEATER_MIN 90.0f
+#define HEATER_MAX 95.0f
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -465,8 +467,15 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   if (htim == &htim14) {
-    volatile float temp = heater_temp;
-    STATUS_IND_Toggle();
+    float temp = heater_temp;
+
+    if (temp < HEATER_MIN) {
+      Heater_On();
+      STATUS_IND_On();
+    } else if (temp > HEATER_MAX) {
+      Heater_Off();
+      STATUS_IND_Off();
+    }
   }
 }
 
